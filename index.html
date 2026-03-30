@@ -180,6 +180,23 @@
   }
   .btn-delete:hover { color: var(--danger); background: rgba(255,77,109,0.1); }
 
+  /* Copy */
+  .btn-copy {
+    flex-shrink: 0;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--sub);
+    padding: 5px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.15s, background 0.15s;
+  }
+  .btn-copy:hover { color: var(--accent); background: rgba(123,108,255,0.12); }
+  .btn-copy.copied { color: var(--green); }
+
   /* Saved dot — absolute so it doesn't affect layout */
   .save-dot {
     position: absolute;
@@ -361,6 +378,9 @@ function buildCard(entry) {
   const card = document.createElement("div");
   card.className = "card";
   card.dataset.id = entry.id;
+  const COPY_SVG = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>`;
+  const CHECK_SVG = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
+
   card.innerHTML = `
     <input class="card-icon" type="text" value="${esc(entry.icon)}" maxlength="2" data-f="icon" />
     <div class="card-fields">
@@ -368,6 +388,7 @@ function buildCard(entry) {
         <span class="field-label">Логин</span>
         <input class="field-input" type="text" placeholder="username / email"
                value="${esc(entry.login)}" data-f="login" autocomplete="off" />
+        <button class="btn-copy" type="button" data-copy="login" title="Копировать логин">${COPY_SVG}</button>
       </div>
       <div class="field-row">
         <span class="field-label">Пароль</span>
@@ -376,6 +397,7 @@ function buildCard(entry) {
                  value="${esc(entry.password)}" data-f="password" autocomplete="off" />
           <button class="btn-eye" type="button">👁</button>
         </div>
+        <button class="btn-copy" type="button" data-copy="password" title="Копировать пароль">${COPY_SVG}</button>
       </div>
       <div class="field-row">
         <span class="field-label">Заметка</span>
@@ -400,12 +422,23 @@ function buildCard(entry) {
     e.currentTarget.textContent = show ? "🙈" : "👁";
   });
 
-  // Double-tap password → copy
-  passInp.addEventListener("dblclick", () => {
-    if (passInp.value) {
-      navigator.clipboard.writeText(passInp.value)
-        .then(() => showToast("Пароль скопирован ✓"));
-    }
+  // Copy buttons
+  card.querySelectorAll(".btn-copy").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const field = btn.dataset.copy;
+      const val = card.querySelector(`[data-f="${field}"]`).value;
+      if (!val) { showToast("Поле пустое"); return; }
+      navigator.clipboard.writeText(val).then(() => {
+        btn.innerHTML = CHECK_SVG;
+        btn.classList.add("copied");
+        const label = field === "login" ? "Логин" : "Пароль";
+        showToast(`${label} скопирован ✓`);
+        setTimeout(() => {
+          btn.innerHTML = COPY_SVG;
+          btn.classList.remove("copied");
+        }, 1500);
+      });
+    });
   });
 
   // Delete
