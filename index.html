@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>PasswordFap</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:        #0d0d14;
+    --surface:   #15151f;
+    --card:      #1b1b27;
+    --input-bg:  #22222f;
+    --border:    #2c2c3e;
+    --accent:    #7b6cff;
+    --text:      #e2e2f0;
+    --sub:       #7777a0;
+    --danger:    #ff4d6d;
+    --green:     #3ddc84;
+    --radius:    14px;
+  }
+
+  html, body {
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 15px;
+    overflow-x: hidden;
+  }
+
+  /* ── Header ── */
+  .header {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 18px 12px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .header-logo {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    object-fit: cover;
+    flex-shrink: 0;
+  }
+  .header-title {
+    font-size: 17px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    color: var(--text);
+  }
+  .header-count {
+    margin-left: auto;
+    font-size: 12px;
+    color: var(--sub);
+    background: var(--input-bg);
+    padding: 3px 9px;
+    border-radius: 20px;
+  }
+
+  /* ── List ── */
+  .list {
+    padding: 14px 12px 100px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-height: calc(100vh - 57px);
+  }
+
+  /* ── Card ── */
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 14px 12px;
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    animation: slideIn 0.18s ease;
+  }
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateY(-8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Icon */
+  .card-icon {
+    width: 42px;
+    height: 42px;
+    flex-shrink: 0;
+    background: var(--input-bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    font-size: 22px;
+    text-align: center;
+    line-height: 42px;
+    cursor: text;
+    color: var(--text);
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .card-icon:focus { border-color: var(--accent); }
+
+  /* Fields */
+  .card-fields { flex: 1; display: flex; flex-direction: column; gap: 7px; min-width: 0; }
+  .field-row { display: flex; align-items: center; gap: 6px; }
+  .field-label {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: var(--sub);
+    width: 34px;
+    flex-shrink: 0;
+  }
+  .field-input {
+    flex: 1;
+    background: var(--input-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 7px 10px;
+    color: var(--text);
+    font-size: 14px;
+    outline: none;
+    width: 100%;
+    min-width: 0;
+    transition: border-color 0.15s;
+  }
+  .field-input:focus { border-color: var(--accent); }
+  .field-input::placeholder { color: var(--sub); }
+
+  /* Password row */
+  .pass-wrap { position: relative; flex: 1; display: flex; align-items: center; }
+  .pass-wrap .field-input { padding-right: 36px; }
+  .btn-eye {
+    position: absolute;
+    right: 8px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 15px;
+    color: var(--sub);
+    padding: 2px;
+    line-height: 1;
+    transition: color 0.15s;
+  }
+  .btn-eye:hover { color: var(--text); }
+
+  /* Delete */
+  .btn-delete {
+    flex-shrink: 0;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 16px;
+    color: var(--sub);
+    padding: 4px;
+    border-radius: 6px;
+    line-height: 1;
+    transition: color 0.15s, background 0.15s;
+    margin-top: 2px;
+  }
+  .btn-delete:hover { color: var(--danger); background: rgba(255,77,109,0.1); }
+
+  /* Saved dot */
+  .save-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    flex-shrink: 0;
+    opacity: 0;
+    transition: opacity 0.2s;
+    align-self: flex-start;
+    margin-top: 18px;
+  }
+  .save-dot.dirty { opacity: 1; }
+  .save-dot.saved { background: var(--green); opacity: 1; }
+
+  /* ── FAB — iOS glass ── */
+  .fab {
+    position: fixed;
+    bottom: calc(24px + env(safe-area-inset-bottom));
+    right: 20px;
+    width: 58px;
+    height: 58px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.10);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    color: #fff;
+    font-size: 30px;
+    font-weight: 200;
+    line-height: 1;
+    cursor: pointer;
+    box-shadow:
+      0 0 0 0.5px rgba(255,255,255,0.08) inset,
+      0 2px 8px rgba(0,0,0,0.45),
+      0 8px 28px rgba(0,0,0,0.35),
+      0 0 24px rgba(123,108,255,0.18);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.14s ease, box-shadow 0.14s ease, background 0.14s ease;
+    z-index: 20;
+  }
+  .fab:active {
+    transform: scale(0.91);
+    background: rgba(255,255,255,0.16);
+    box-shadow:
+      0 0 0 0.5px rgba(255,255,255,0.10) inset,
+      0 1px 4px rgba(0,0,0,0.5),
+      0 4px 14px rgba(0,0,0,0.4);
+  }
+
+  /* ── Toast ── */
+  .toast {
+    position: fixed;
+    bottom: calc(92px + env(safe-area-inset-bottom));
+    left: 50%;
+    transform: translateX(-50%) translateY(10px);
+    background: #27273a;
+    color: var(--text);
+    font-size: 13px;
+    padding: 9px 18px;
+    border-radius: 20px;
+    opacity: 0;
+    transition: opacity 0.2s, transform 0.2s;
+    pointer-events: none;
+    white-space: nowrap;
+    z-index: 30;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  /* ── Empty state ── */
+  .empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    color: var(--sub);
+    padding: 60px 20px;
+    text-align: center;
+  }
+  .empty-icon { font-size: 48px; }
+  .empty-text { font-size: 15px; }
+  .empty-hint { font-size: 13px; opacity: 0.7; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <img class="header-logo" src="icon.png" alt="" />
+  <span class="header-title">PasswordFap</span>
+  <span class="header-count" id="countBadge">0 записей</span>
+</div>
+
+<div class="list" id="list"></div>
+
+<button class="fab" id="fabBtn" title="Добавить запись">+</button>
+<div class="toast" id="toast"></div>
+
+<script>
+const tg = window.Telegram.WebApp;
+tg.ready();
+tg.expand();
+
+// ── Storage key per Telegram user ─────────────────────────────────────────────
+const uid = tg.initDataUnsafe?.user?.id || "local";
+const STORAGE_KEY = `pfap_${uid}`;
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+let nextId = Date.now();
+function genId() { return ++nextId; }
+
+function load() {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]"); }
+  catch { return []; }
+}
+function save(entries) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
+}
+
+let toastTimer = null;
+function showToast(msg, duration = 1800) {
+  const el = document.getElementById("toast");
+  el.textContent = msg;
+  el.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove("show"), duration);
+}
+
+function updateCount(n) {
+  const s = n === 1 ? "1 запись" : n < 5 && n > 0 ? `${n} записи` : `${n} записей`;
+  document.getElementById("countBadge").textContent = s;
+}
+
+function esc(str) {
+  return String(str ?? "")
+    .replace(/&/g, "&amp;").replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+// ── State ────────────────────────────────────────────────────────────────────
+
+let entries = load();
+const saveTimers = {};
+
+// ── Render ───────────────────────────────────────────────────────────────────
+
+function renderAll() {
+  const list = document.getElementById("list");
+  list.innerHTML = "";
+  updateCount(entries.length);
+
+  if (!entries.length) {
+    list.innerHTML = `
+      <div class="empty">
+        <div class="empty-icon">🔑</div>
+        <div class="empty-text">Нет сохранённых паролей</div>
+        <div class="empty-hint">Нажми «+» чтобы добавить запись</div>
+      </div>`;
+    return;
+  }
+
+  entries.forEach(e => list.appendChild(buildCard(e)));
+}
+
+function buildCard(entry) {
+  const card = document.createElement("div");
+  card.className = "card";
+  card.dataset.id = entry.id;
+  card.innerHTML = `
+    <input class="card-icon" type="text" value="${esc(entry.icon)}" maxlength="2" data-f="icon" />
+    <div class="card-fields">
+      <div class="field-row">
+        <span class="field-label">Логин</span>
+        <input class="field-input" type="text" placeholder="username / email"
+               value="${esc(entry.login)}" data-f="login" autocomplete="off" />
+      </div>
+      <div class="field-row">
+        <span class="field-label">Пароль</span>
+        <div class="pass-wrap">
+          <input class="field-input" type="password" placeholder="••••••••"
+                 value="${esc(entry.password)}" data-f="password" autocomplete="off" />
+          <button class="btn-eye" type="button">👁</button>
+        </div>
+      </div>
+      <div class="field-row">
+        <span class="field-label">Заметка</span>
+        <input class="field-input" type="text" placeholder="описание..."
+               value="${esc(entry.note)}" data-f="note" />
+      </div>
+    </div>
+    <div class="save-dot" data-dot></div>
+    <button class="btn-delete" type="button">🗑</button>
+  `;
+
+  // Input → debounced save
+  card.querySelectorAll("[data-f]").forEach(inp => {
+    inp.addEventListener("input", () => onInput(card, entry));
+  });
+
+  // Eye toggle
+  const passInp = card.querySelector("[data-f='password']");
+  card.querySelector(".btn-eye").addEventListener("click", e => {
+    const show = passInp.type === "password";
+    passInp.type = show ? "text" : "password";
+    e.currentTarget.textContent = show ? "🙈" : "👁";
+  });
+
+  // Double-tap password → copy
+  passInp.addEventListener("dblclick", () => {
+    if (passInp.value) {
+      navigator.clipboard.writeText(passInp.value)
+        .then(() => showToast("Пароль скопирован ✓"));
+    }
+  });
+
+  // Delete
+  card.querySelector(".btn-delete").addEventListener("click", () => {
+    entries = entries.filter(e => e.id !== entry.id);
+    save(entries);
+    card.style.transition = "opacity 0.18s, transform 0.18s";
+    card.style.opacity = "0";
+    card.style.transform = "translateX(20px)";
+    setTimeout(() => {
+      card.remove();
+      updateCount(entries.length);
+      if (!entries.length) renderAll();
+    }, 200);
+  });
+
+  return card;
+}
+
+// ── Input & save ─────────────────────────────────────────────────────────────
+
+function onInput(card, entry) {
+  const dot = card.querySelector("[data-dot]");
+  dot.className = "save-dot dirty";
+  clearTimeout(saveTimers[entry.id]);
+  saveTimers[entry.id] = setTimeout(() => commitCard(card, entry, dot), 800);
+}
+
+function commitCard(card, entry, dot) {
+  entry.icon     = card.querySelector("[data-f='icon']").value.trim()     || "🔑";
+  entry.login    = card.querySelector("[data-f='login']").value.trim();
+  entry.password = card.querySelector("[data-f='password']").value;
+  entry.note     = card.querySelector("[data-f='note']").value.trim();
+  save(entries);
+  dot.className = "save-dot saved";
+  setTimeout(() => { dot.className = "save-dot"; }, 1200);
+}
+
+// ── Add ───────────────────────────────────────────────────────────────────────
+
+document.getElementById("fabBtn").addEventListener("click", () => {
+  const entry = { id: genId(), icon: "🔑", login: "", password: "", note: "" };
+  entries.unshift(entry);
+  save(entries);
+
+  const list = document.getElementById("list");
+  if (list.querySelector(".empty")) list.innerHTML = "";
+
+  const card = buildCard(entry);
+  list.prepend(card);
+  updateCount(entries.length);
+  card.querySelector("[data-f='icon']").focus();
+});
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+
+renderAll();
+</script>
+</body>
+</html>
