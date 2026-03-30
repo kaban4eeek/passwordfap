@@ -197,7 +197,7 @@
   .btn-copy:hover { color: var(--accent); background: rgba(123,108,255,0.12); }
   .btn-copy.copied { color: var(--green); }
 
-  /* Saved dot — absolute so it doesn't affect layout */
+  /* Saved dot */
   .save-dot {
     position: absolute;
     top: 10px;
@@ -237,26 +237,13 @@
     transition: transform 0.14s ease, box-shadow 0.14s ease, background 0.14s ease;
     z-index: 20;
     padding: 0;
-    /* "+" знак центрируем явно */
-    font-size: 0;
-  }
-  .fab::after {
-    content: '+';
-    display: block;
     font-size: 28px;
     font-weight: 300;
     line-height: 1;
-    color: #fff;
-    /* компенсируем оптическое смещение символа + */
-    margin-top: -1px;
   }
   .fab:active {
     transform: scale(0.91);
     background: rgba(255,255,255,0.16);
-    box-shadow:
-      0 0 0 0.5px rgba(255,255,255,0.10) inset,
-      0 1px 4px rgba(0,0,0,0.5),
-      0 4px 14px rgba(0,0,0,0.4);
   }
 
   /* ── Toast ── */
@@ -278,7 +265,7 @@
   }
   .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
-  /* ── Empty state ── */
+  /* ── Empty / Loading ── */
   .empty {
     display: flex;
     flex-direction: column;
@@ -292,6 +279,16 @@
   .empty-icon { font-size: 48px; }
   .empty-text { font-size: 15px; }
   .empty-hint { font-size: 13px; opacity: 0.7; }
+
+  .spinner {
+    width: 32px; height: 32px;
+    border: 3px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    margin-bottom: 8px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
 </style>
 </head>
 <body>
@@ -299,10 +296,15 @@
 <div class="header">
   <img class="header-logo" src="icon.png" alt="" />
   <span class="header-title">PasswordFap</span>
-  <span class="header-count" id="countBadge">0 записей</span>
+  <span class="header-count" id="countBadge">…</span>
 </div>
 
-<div class="list" id="list"></div>
+<div class="list" id="list">
+  <div class="empty">
+    <div class="spinner"></div>
+    <div class="empty-text">Загрузка…</div>
+  </div>
+</div>
 
 <button class="fab" id="fabBtn" title="Добавить запись">+</button>
 <div class="toast" id="toast"></div>
@@ -312,23 +314,12 @@ const tg = window.Telegram.WebApp;
 tg.ready();
 tg.expand();
 
-// ── Storage key per Telegram user ─────────────────────────────────────────────
-const uid = tg.initDataUnsafe?.user?.id || "local";
-const STORAGE_KEY = `pfap_${uid}`;
+// ── Config ────────────────────────────────────────────────────────────────────
+const GITHUB_RAW = "https://raw.githubusercontent.com/kaban4eeek/passwordfap/main/api_url.txt";
+let API_BASE = null;
+const initData = tg.initData || "";
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-let nextId = Date.now();
-function genId() { return ++nextId; }
-
-function load() {
-  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]"); }
-  catch { return []; }
-}
-function save(entries) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
-}
-
+// ── Helpers ───────────────────────────────────────────────────────────────────
 let toastTimer = null;
 function showToast(msg, duration = 1800) {
   const el = document.getElementById("toast");
@@ -349,13 +340,27 @@ function esc(str) {
     .replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-// ── State ────────────────────────────────────────────────────────────────────
+// ── API ───────────────────────────────────────────────────────────────────────
+async function apiFetch(path, options = {}) {
+  const headers = { "Content-Type": "application/json", "X-Init-Data": initData, ...(options.headers || {}) };
+  const r = await fetch(API_BASE + path, { ...options, headers });
+  if (r.status === 204) return null;
+  return r.json();
+}
 
-let entries = load();
+async function apiLoad()           { return apiFetch("/api/entries"); }
+async function apiCreate(e)        { return apiFetch("/api/entries", { method: "POST", body: JSON.stringify(e) }); }
+async function apiUpdate(id, e)    { return apiFetch(`/api/entries/${id}`, { method: "PUT",  body: JSON.stringify(e) }); }
+async function apiDelete(id)       { return apiFetch(`/api/entries/${id}`, { method: "DELETE" }); }
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let entries = [];
 const saveTimers = {};
 
-// ── Render ───────────────────────────────────────────────────────────────────
+const COPY_SVG  = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>`;
+const CHECK_SVG = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
 
+// ── Render ────────────────────────────────────────────────────────────────────
 function renderAll() {
   const list = document.getElementById("list");
   list.innerHTML = "";
@@ -378,8 +383,6 @@ function buildCard(entry) {
   const card = document.createElement("div");
   card.className = "card";
   card.dataset.id = entry.id;
-  const COPY_SVG = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>`;
-  const CHECK_SVG = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
 
   card.innerHTML = `
     <input class="card-icon" type="text" value="${esc(entry.icon)}" maxlength="2" data-f="icon" />
@@ -401,7 +404,7 @@ function buildCard(entry) {
       </div>
       <div class="field-row">
         <span class="field-label">Заметка</span>
-        <input class="field-input" type="text" placeholder="описание..."
+        <input class="field-input" type="text" placeholder="описание…"
                value="${esc(entry.note)}" data-f="note" />
       </div>
     </div>
@@ -431,71 +434,102 @@ function buildCard(entry) {
       navigator.clipboard.writeText(val).then(() => {
         btn.innerHTML = CHECK_SVG;
         btn.classList.add("copied");
-        const label = field === "login" ? "Логин" : "Пароль";
-        showToast(`${label} скопирован ✓`);
-        setTimeout(() => {
-          btn.innerHTML = COPY_SVG;
-          btn.classList.remove("copied");
-        }, 1500);
+        showToast((field === "login" ? "Логин" : "Пароль") + " скопирован ✓");
+        setTimeout(() => { btn.innerHTML = COPY_SVG; btn.classList.remove("copied"); }, 1500);
       });
     });
   });
 
   // Delete
-  card.querySelector(".btn-delete").addEventListener("click", () => {
+  card.querySelector(".btn-delete").addEventListener("click", async () => {
+    await apiDelete(entry.id);
     entries = entries.filter(e => e.id !== entry.id);
-    save(entries);
     card.style.transition = "opacity 0.18s, transform 0.18s";
     card.style.opacity = "0";
     card.style.transform = "translateX(20px)";
-    setTimeout(() => {
-      card.remove();
-      updateCount(entries.length);
-      if (!entries.length) renderAll();
-    }, 200);
+    setTimeout(() => { card.remove(); updateCount(entries.length); if (!entries.length) renderAll(); }, 200);
   });
 
   return card;
 }
 
-// ── Input & save ─────────────────────────────────────────────────────────────
-
+// ── Input & save ──────────────────────────────────────────────────────────────
 function onInput(card, entry) {
   const dot = card.querySelector("[data-dot]");
   dot.className = "save-dot dirty";
   clearTimeout(saveTimers[entry.id]);
-  saveTimers[entry.id] = setTimeout(() => commitCard(card, entry, dot), 800);
+  saveTimers[entry.id] = setTimeout(() => commitCard(card, entry, dot), 900);
 }
 
 function commitCard(card, entry, dot) {
-  entry.icon     = card.querySelector("[data-f='icon']").value.trim()     || "🔑";
+  entry.icon     = card.querySelector("[data-f='icon']").value.trim() || "🔑";
   entry.login    = card.querySelector("[data-f='login']").value.trim();
   entry.password = card.querySelector("[data-f='password']").value;
   entry.note     = card.querySelector("[data-f='note']").value.trim();
-  save(entries);
-  dot.className = "save-dot saved";
-  setTimeout(() => { dot.className = "save-dot"; }, 1200);
+  apiUpdate(entry.id, entry).then(() => {
+    dot.className = "save-dot saved";
+    setTimeout(() => { dot.className = "save-dot"; }, 1200);
+  });
 }
 
 // ── Add ───────────────────────────────────────────────────────────────────────
+document.getElementById("fabBtn").addEventListener("click", async () => {
+  const newEntry = { icon: "🔑", login: "", password: "", note: "" };
+  const res = await apiCreate(newEntry);
+  if (!res?.id) { showToast("Ошибка сервера"); return; }
 
-document.getElementById("fabBtn").addEventListener("click", () => {
-  const entry = { id: genId(), icon: "🔑", login: "", password: "", note: "" };
-  entries.unshift(entry);
-  save(entries);
+  newEntry.id = res.id;
+  entries.unshift(newEntry);
 
   const list = document.getElementById("list");
   if (list.querySelector(".empty")) list.innerHTML = "";
-
-  const card = buildCard(entry);
+  const card = buildCard(newEntry);
   list.prepend(card);
   updateCount(entries.length);
   card.querySelector("[data-f='icon']").focus();
 });
 
-// ── Init ──────────────────────────────────────────────────────────────────────
+// ── Boot ──────────────────────────────────────────────────────────────────────
+async function boot() {
+  // 1. Get API URL from GitHub
+  for (let attempt = 1; attempt <= 5; attempt++) {
+    try {
+      const r = await fetch(GITHUB_RAW + "?t=" + Date.now());
+      if (r.ok) {
+        API_BASE = (await r.text()).trim();
+        break;
+      }
+    } catch (_) {}
+    await new Promise(res => setTimeout(res, 2000));
+  }
 
-renderAll();
+  if (!API_BASE) {
+    document.getElementById("list").innerHTML = `
+      <div class="empty">
+        <div class="empty-icon">⚠️</div>
+        <div class="empty-text">Сервер недоступен</div>
+        <div class="empty-hint">Попробуй перезапустить приложение</div>
+      </div>`;
+    updateCount(0);
+    return;
+  }
+
+  // 2. Load entries
+  try {
+    entries = await apiLoad();
+    renderAll();
+  } catch {
+    document.getElementById("list").innerHTML = `
+      <div class="empty">
+        <div class="empty-icon">⚠️</div>
+        <div class="empty-text">Не удалось загрузить данные</div>
+        <div class="empty-hint">Попробуй ещё раз</div>
+      </div>`;
+    updateCount(0);
+  }
+}
+
+boot();
 </script>
 </body>
 </html>
